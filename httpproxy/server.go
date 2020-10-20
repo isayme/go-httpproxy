@@ -13,7 +13,8 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-var connectionEstablished = []byte("HTTP/1.1 200 Connection established\r\n\r\n")
+var responseOk = []byte("HTTP/1.1 200 OK\r\n")
+var responseConnectionEstablished = []byte("HTTP/1.1 200 Connection established\r\n\r\n")
 
 type Server struct {
 	address      string
@@ -92,6 +93,15 @@ func (s *Server) handleConnection(conn net.Conn) {
 		}
 	}
 
+	// not proxy request, response version
+	if req.URL.Hostname() == "" {
+		conn.Write(responseOk)
+		conn.Write([]byte("Content-Type: text/plain\r\n"))
+		conn.Write([]byte(fmt.Sprintf("Server: %s\r\n\r\n", Name)))
+		conn.Write([]byte(fmt.Sprintf("%s %s\r\n\r\n", Name, Version)))
+		return
+	}
+
 	logger.Infow("newRequest", "url", req.URL.String())
 	remoteConn, err := s.dial("tcp", req.URL.Host)
 	if err != nil {
@@ -102,7 +112,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 	if req.Method == http.MethodConnect {
 		// response ok
-		_, err := conn.Write(connectionEstablished)
+		_, err := conn.Write(responseConnectionEstablished)
 		if err != nil {
 			logger.Warnf("https resopnse 200 fail", "err", err)
 			return
