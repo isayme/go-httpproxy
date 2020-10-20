@@ -2,16 +2,18 @@ package httpproxy
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/isayme/go-logger"
 	"golang.org/x/net/proxy"
 )
+
+var connectionEstablished = []byte("HTTP/1.1 200 Connection established\r\n\r\n")
 
 type Server struct {
 	address      string
@@ -72,71 +74,48 @@ func (s *Server) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	// read request info
-	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
-	line, err := rw.ReadString('\n')
+	reqBuf := bytes.NewBuffer(nil)
+	rr := io.TeeReader(conn, reqBuf)
+	req, err := http.ReadRequest(bufio.NewReader(rr))
 	if err != nil {
-		logger.Warnf("read request info fail: %v", err)
+		logger.Warnw("http.ReadRequest fail", "err", err)
 		return
 	}
 
-	result := strings.SplitN(line, " ", 3)
-	if len(result) <= 2 {
-		logger.Warnw("not valid request info")
-		return
-	}
-	method := result[0]
-	rawurl := result[1]
-
-	// https
-	if method == http.MethodConnect {
-		if strings.Index(rawurl, "://") < 0 {
-			rawurl = fmt.Sprintf("https://%s", rawurl)
-		}
-	}
-
-	url, err := url.Parse(rawurl)
-	if err != nil {
-		logger.Warnw("url.Parse request url fail", "err", err)
-		return
-	}
-
-	if method == http.MethodConnect {
-		if url.Port() == "" {
-			url.Host = fmt.Sprintf("%s:%d", url.Host, 443)
+	if req.Method == http.MethodConnect {
+		if req.URL.Port() == "" {
+			req.URL.Host = fmt.Sprintf("%s:%d", req.URL.Host, 443)
 		}
 	} else {
-		if url.Port() == "" {
-			url.Host = fmt.Sprintf("%s:%d", url.Host, 80)
+		if req.URL.Port() == "" {
+			req.URL.Host = fmt.Sprintf("%s:%d", req.URL.Host, 80)
 		}
 	}
 
-	logger.Infow("newRequest", "url", url.String())
-	remoteConn, err := s.dial("tcp", url.Host)
+	logger.Infow("newRequest", "url", req.URL.String())
+	remoteConn, err := s.dial("tcp", req.URL.Host)
 	if err != nil {
-		logger.Warnw("dial remote fail", "err", err, "addr", url.Host)
+		logger.Warnw("dial remote fail", "err", err, "addr", req.URL.Host)
 		return
 	}
 	defer remoteConn.Close()
 
-	if method == http.MethodConnect {
+	if req.Method == http.MethodConnect {
 		// response ok
-		_, err := rw.WriteString("HTTP/1.1 200 Connection established\r\n\r\n")
+		_, err := conn.Write(connectionEstablished)
 		if err != nil {
 			logger.Warnf("https resopnse 200 fail", "err", err)
 			return
 		}
-		rw.Flush()
-
-		// reset to ignore CONNECT request data
-		rw.Reader.Reset(conn)
 	} else {
-		_, err = remoteConn.Write([]byte(line))
+		// write request data to remote
+		_, err = remoteConn.Write(reqBuf.Bytes())
 		if err != nil {
 			logger.Warnf("remote write line fail", "err", err)
 			return
 		}
 	}
 
-	go io.Copy(rw, remoteConn)
-	io.Copy(remoteConn, rw)
+	go io.Copy(conn, remoteConn)
+	io.Copy(remoteConn, conn)
 }
