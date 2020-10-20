@@ -1,6 +1,9 @@
 name: Build Docker Image
 
-on: push
+on:
+  push:
+    tags:
+      - v*
 
 env:
   APP_NAME: httpproxy
