@@ -1,5 +1,5 @@
 # go-httpproxy
-A simple http proxy
+A simple http proxy, support HTTP/HTTPS/HTTP2/Websocket.
 
 # Proxy Protocol Example
 ## for HTTP
