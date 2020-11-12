@@ -2,7 +2,6 @@ package httpproxy
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -74,10 +73,7 @@ func (s *Server) ListenAndServe() error {
 func (s *Server) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
-	// read request info
-	reqBuf := bytes.NewBuffer(nil)
-	rr := io.TeeReader(conn, reqBuf)
-	req, err := http.ReadRequest(bufio.NewReader(rr))
+	req, err := http.ReadRequest(bufio.NewReader(conn))
 	if err != nil {
 		logger.Warnw("http.ReadRequest fail", "err", err)
 		return
@@ -119,7 +115,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		}
 	} else {
 		// write request data to remote
-		_, err = remoteConn.Write(reqBuf.Bytes())
+		err = req.Write(remoteConn)
 		if err != nil {
 			logger.Warnf("remote write line fail", "err", err)
 			return
