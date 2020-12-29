@@ -10,7 +10,7 @@ httpproxy -p 1087
 httpproxy --proxy socks5://your-host:1080 -p 1087
 ```
 
-# Proxy Protocol Screeshoot
+# Proxy Protocol Screenshoot
 ## for HTTP
 ![HTTP Protocol](./doc/http.png)
 
