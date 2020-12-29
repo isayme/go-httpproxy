@@ -1,7 +1,16 @@
 # go-httpproxy
 A simple http proxy, support HTTP/HTTPS/HTTP2/Websocket.
 
-# Proxy Protocol Example
+# Example
+```
+// simple proxy
+httpproxy -p 1087
+
+// proxy with socks5
+httpproxy --proxy socks5://your-host:1080 -p 1087
+```
+
+# Proxy Protocol Screeshoot
 ## for HTTP
 ![HTTP Protocol](./doc/http.png)
 
