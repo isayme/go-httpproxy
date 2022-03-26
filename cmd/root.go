@@ -10,12 +10,18 @@ import (
 )
 
 var showVersion bool
+var logFormat string
 var listenPort uint16
+var certFile string
+var keyFile string
 var proxyAddress string
 
 func init() {
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show version")
-	rootCmd.Flags().Uint16VarP(&listenPort, "port", "p", 8080, "listen port")
+	rootCmd.Flags().StringVarP(&logFormat, "logFormat", "", "console", "log format")
+	rootCmd.Flags().Uint16VarP(&listenPort, "port", "p", 1087, "listen port")
+	rootCmd.Flags().StringVarP(&certFile, "certFile", "", "", "cert file")
+	rootCmd.Flags().StringVarP(&keyFile, "keyFile", "", "", "key file")
 	rootCmd.Flags().StringVar(&proxyAddress, "proxy", "", "use this proxy")
 }
 
@@ -27,14 +33,24 @@ var rootCmd = &cobra.Command{
 			os.Exit(0)
 		}
 
+		if logFormat != "" {
+			logger.SetFormat(logFormat)
+		}
+
 		address := fmt.Sprintf(":%d", listenPort)
 		server, err := httpproxy.NewServer(address, proxyAddress)
 		if err != nil {
 			logger.Error(err)
 			os.Exit(1)
 		}
-		logger.Infow("start listen ...", "addr", address)
-		logger.Error(server.ListenAndServe())
+
+		if certFile != "" && keyFile != "" {
+			logger.Infow("start listen with tls ...", "addr", address)
+			logger.Error(server.ListenAndServeTLS(certFile, keyFile))
+		} else {
+			logger.Infow("start listen ...", "addr", address)
+			logger.Error(server.ListenAndServe())
+		}
 	},
 }
 

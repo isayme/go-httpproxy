@@ -2,6 +2,7 @@ package httpproxy
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -52,13 +53,7 @@ func (s *Server) dial(network, addr string) (c net.Conn, err error) {
 	return s.dialer.Dial(network, addr)
 }
 
-func (s *Server) ListenAndServe() error {
-	l, err := net.Listen("tcp", s.address)
-	if err != nil {
-		logger.Errorf("net.Listen fail: %v", err)
-		return err
-	}
-
+func (s *Server) Serve(l net.Listener) {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
@@ -68,6 +63,37 @@ func (s *Server) ListenAndServe() error {
 
 		go s.handleConnection(conn)
 	}
+}
+
+func (s *Server) ListenAndServe() error {
+	l, err := net.Listen("tcp", s.address)
+	if err != nil {
+		logger.Errorf("net.Listen fail: %v", err)
+		return err
+	}
+
+	s.Serve(l)
+	return nil
+}
+
+func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return err
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+	}
+
+	l, err := tls.Listen("tcp", s.address, tlsConfig)
+	if err != nil {
+		logger.Errorf("net.Listen fail: %v", err)
+		return err
+	}
+
+	s.Serve(l)
+	return nil
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
