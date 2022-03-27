@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/iancoleman/strcase"
 	"github.com/isayme/go-httpproxy/httpproxy"
 	"github.com/isayme/go-logger"
 	"github.com/spf13/cobra"
@@ -18,23 +19,16 @@ var keyFile string
 var proxyAddress string
 
 func aliasNormalizeFunc(f *pflag.FlagSet, name string) pflag.NormalizedName {
-	switch name {
-	case "cert-file", "cert_file":
-		name = "certFile"
-	case "key-file", "key_file":
-		name = "keyFile"
-	case "log-format", "log_format":
-		name = "logFormat"
-	}
+	name = strcase.ToKebab(name)
 	return pflag.NormalizedName(name)
 }
 
 func init() {
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show version")
-	rootCmd.Flags().StringVarP(&logFormat, "logFormat", "", "console", "log format")
+	rootCmd.Flags().StringVarP(&logFormat, "log-format", "", "console", "log format")
 	rootCmd.Flags().Uint16VarP(&listenPort, "port", "p", 1087, "listen port")
-	rootCmd.Flags().StringVarP(&certFile, "certFile", "", "", "cert file")
-	rootCmd.Flags().StringVarP(&keyFile, "keyFile", "", "", "key file")
+	rootCmd.Flags().StringVarP(&certFile, "cert-file", "", "", "cert file")
+	rootCmd.Flags().StringVarP(&keyFile, "key-file", "", "", "key file")
 	rootCmd.Flags().StringVar(&proxyAddress, "proxy", "", "use this proxy")
 	rootCmd.Flags().SetNormalizeFunc(aliasNormalizeFunc)
 }
