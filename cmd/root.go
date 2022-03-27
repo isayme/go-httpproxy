@@ -7,6 +7,7 @@ import (
 	"github.com/isayme/go-httpproxy/httpproxy"
 	"github.com/isayme/go-logger"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var showVersion bool
@@ -16,6 +17,18 @@ var certFile string
 var keyFile string
 var proxyAddress string
 
+func aliasNormalizeFunc(f *pflag.FlagSet, name string) pflag.NormalizedName {
+	switch name {
+	case "cert-file", "cert_file":
+		name = "certFile"
+	case "key-file", "key_file":
+		name = "keyFile"
+	case "log-format", "log_format":
+		name = "logFormat"
+	}
+	return pflag.NormalizedName(name)
+}
+
 func init() {
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show version")
 	rootCmd.Flags().StringVarP(&logFormat, "logFormat", "", "console", "log format")
@@ -23,6 +36,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&certFile, "certFile", "", "", "cert file")
 	rootCmd.Flags().StringVarP(&keyFile, "keyFile", "", "", "key file")
 	rootCmd.Flags().StringVar(&proxyAddress, "proxy", "", "use this proxy")
+	rootCmd.Flags().SetNormalizeFunc(aliasNormalizeFunc)
 }
 
 var rootCmd = &cobra.Command{
