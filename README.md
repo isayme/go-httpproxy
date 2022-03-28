@@ -6,17 +6,8 @@
 
 A simple http proxy, support HTTP/HTTPS/HTTP2/Websocket.
 
-# Run with Cli
-
-```
-// simple proxy
-httpproxy -p 1087
-
-// proxy with socks5
-httpproxy --proxy socks5://your-host:1080 -p 1087
-```
-
 # Docker Compose
+
 ```
 version: "3"
 
@@ -26,7 +17,10 @@ services:
     image: isayme/httpproxy:latest
     ports:
       - "1087:1087"
-    command: /app/httpproxy --proxy socks5://{socks5 server addr}:{socks5 server port} -p 1087
+    command: /app/httpproxy -p 1087
+    # command: httpproxy --proxy socks5://your-host:your-port -p 1087
+    # command: httpproxy --proxy http://your-host:your-port -p 1087
+    # command: httpproxy --proxy https://your-host:your-port -p 1087
 ```
 
 # Proxy Protocol Screenshoot

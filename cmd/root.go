@@ -29,7 +29,7 @@ func init() {
 	rootCmd.Flags().Uint16VarP(&listenPort, "port", "p", 1087, "listen port")
 	rootCmd.Flags().StringVarP(&certFile, "cert-file", "", "", "cert file")
 	rootCmd.Flags().StringVarP(&keyFile, "key-file", "", "", "key file")
-	rootCmd.Flags().StringVar(&proxyAddress, "proxy", "", "use this proxy")
+	rootCmd.Flags().StringVar(&proxyAddress, "proxy", "", "use proxy, format: 'socks5://host:port' or 'http://host:port' or 'https://host:port'")
 	rootCmd.Flags().SetNormalizeFunc(aliasNormalizeFunc)
 }
 
