@@ -95,6 +95,7 @@ func (hp *HttpProxy) Dial(network, addr string) (c net.Conn, err error) {
 	if err != nil {
 		return nil, err
 	}
+	resp.Body.Close()
 
 	statusCode := resp.StatusCode
 	if statusCode != 200 {
