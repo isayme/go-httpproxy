@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/iancoleman/strcase"
 	"github.com/isayme/go-httpproxy/httpproxy"
@@ -17,6 +18,7 @@ var listenPort uint16
 var certFile string
 var keyFile string
 var proxyAddress string
+var connectTimeout time.Duration
 
 func aliasNormalizeFunc(f *pflag.FlagSet, name string) pflag.NormalizedName {
 	name = strcase.ToKebab(name)
@@ -30,6 +32,8 @@ func init() {
 	rootCmd.Flags().StringVarP(&certFile, "cert-file", "", "", "cert file")
 	rootCmd.Flags().StringVarP(&keyFile, "key-file", "", "", "key file")
 	rootCmd.Flags().StringVar(&proxyAddress, "proxy", "", "use proxy, format: 'socks5://host:port' or 'http://host:port' or 'https://host:port'")
+	rootCmd.Flags().DurationVar(&connectTimeout, "connect-timeout", time.Duration(0), "timeout of dial proxy or remote")
+
 	rootCmd.Flags().SetNormalizeFunc(aliasNormalizeFunc)
 }
 
@@ -46,7 +50,16 @@ var rootCmd = &cobra.Command{
 		}
 
 		address := fmt.Sprintf(":%d", listenPort)
-		server, err := httpproxy.NewServer(address, proxyAddress)
+		
+		options := []httpproxy.ServerOption{}
+		if proxyAddress != "" {
+			options = append(options, httpproxy.WithProxy(proxyAddress))
+		}
+		if connectTimeout > 0 {
+			options = append(options, httpproxy.WithConnectTimeout(connectTimeout))
+		}
+
+		server, err := httpproxy.NewServer(address, options...)
 		if err != nil {
 			logger.Error(err)
 			os.Exit(1)

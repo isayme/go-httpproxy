@@ -2,6 +2,7 @@ package httpproxy
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -17,17 +18,25 @@ var responseOk = []byte("HTTP/1.1 200 OK\r\n")
 var responseConnectionEstablished = []byte("HTTP/1.1 200 Connection established\r\n\r\n")
 
 type Server struct {
-	address      string
-	proxyAddress string
-	dialer       proxy.Dialer
+	address string
+	dialer  proxy.ContextDialer
+
+	options serverOptions
 }
 
-func NewServer(address string, proxyAddress string) (*Server, error) {
+func NewServer(address string, opts ...ServerOption) (*Server, error) {
 	s := &Server{
 		address:      address,
-		proxyAddress: proxyAddress,
+		dialer:  proxy.Direct,
 	}
 
+	if len(opts) > 0 {
+		for _, opt := range opts {
+			opt.apply(&s.options)
+		}
+	}
+
+	proxyAddress := s.options.proxy
 	if proxyAddress != "" {
 		url, err := url.Parse(proxyAddress)
 		if err != nil {
@@ -39,18 +48,21 @@ func NewServer(address string, proxyAddress string) (*Server, error) {
 			return nil, fmt.Errorf("NewServer: create proxy dialer fail: %w", err)
 		}
 
-		s.dialer = dialer
+		s.dialer = NewProxyContextDialer(dialer)
 	}
 
 	return s, nil
 }
 
 func (s *Server) dial(network, addr string) (c net.Conn, err error) {
-	if s.dialer == nil {
-		return net.Dial(network, addr)
+	ctx := context.Background()
+	if s.options.connectTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.options.connectTimeout)
+		defer cancel()
 	}
 
-	return s.dialer.Dial(network, addr)
+	return s.dialer.DialContext(ctx, network, addr)
 }
 
 func (s *Server) Serve(l net.Listener) {
@@ -148,6 +160,10 @@ func (s *Server) handleConnection(conn net.Conn) {
 		}
 	}
 
-	go io.Copy(conn, remoteConn)
+	go func() {
+		io.Copy(conn, remoteConn)
+		conn.Close()
+	}()
+
 	io.Copy(remoteConn, conn)
 }
