@@ -1,6 +1,6 @@
 module github.com/isayme/go-httpproxy
 
-go 1.17
+go 1.22
 
 require (
 	github.com/iancoleman/strcase v0.2.0
