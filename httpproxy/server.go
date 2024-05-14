@@ -9,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
+	"time"
 
 	"github.com/isayme/go-logger"
 	"golang.org/x/net/proxy"
@@ -26,7 +28,7 @@ type Server struct {
 
 func NewServer(address string, opts ...ServerOption) (*Server, error) {
 	s := &Server{
-		address:      address,
+		address: address,
 		dialer:  proxy.Direct,
 	}
 
@@ -111,7 +113,9 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 func (s *Server) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
-	req, err := http.ReadRequest(bufio.NewReader(conn))
+	tcpConn, _ := conn.(*net.TCPConn)
+
+	req, err := http.ReadRequest(bufio.NewReader(tcpConn))
 	if err != nil {
 		logger.Warnw("http.ReadRequest fail", "err", err)
 		return
@@ -129,41 +133,56 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 	// not proxy request, response version
 	if req.URL.Hostname() == "" {
-		conn.Write(responseOk)
-		conn.Write([]byte("Content-Type: text/plain\r\n"))
-		conn.Write([]byte(fmt.Sprintf("Server: %s\r\n\r\n", Name)))
-		conn.Write([]byte(fmt.Sprintf("%s %s\r\n\r\n", Name, Version)))
+		tcpConn.Write(responseOk)
+		tcpConn.Write([]byte("Content-Type: text/plain\r\n"))
+		tcpConn.Write([]byte(fmt.Sprintf("Server: %s\r\n\r\n", Name)))
+		tcpConn.Write([]byte(fmt.Sprintf("%s %s\r\n\r\n", Name, Version)))
 		return
 	}
 
 	logger.Infow("newRequest", "url", req.URL.String())
+	start := time.Now()
 	remoteConn, err := s.dial("tcp", req.URL.Host)
 	if err != nil {
 		logger.Warnw("dial remote fail", "err", err, "addr", req.URL.Host)
 		return
 	}
 	defer remoteConn.Close()
+	tcpRemoteConn, _ := remoteConn.(*net.TCPConn)
 
 	if req.Method == http.MethodConnect {
 		// response ok
-		_, err := conn.Write(responseConnectionEstablished)
+		_, err := tcpConn.Write(responseConnectionEstablished)
 		if err != nil {
-			logger.Warnf("https resopnse 200 fail", "err", err)
+			logger.Warnw("https resopnse 200 fail", "err", err)
 			return
 		}
 	} else {
 		// write request data to remote
-		err = req.Write(remoteConn)
+		err = req.Write(tcpRemoteConn)
 		if err != nil {
-			logger.Warnf("remote write line fail", "err", err)
+			logger.Warnw("remote write line fail", "err", err)
 			return
 		}
 	}
 
+	// see https://stackoverflow.com/a/75418345/1918831
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+
 	go func() {
-		io.Copy(conn, remoteConn)
-		conn.Close()
+		defer wg.Done()
+		io.Copy(tcpRemoteConn, tcpConn)
+		tcpRemoteConn.CloseWrite()
 	}()
 
-	io.Copy(remoteConn, conn)
+	go func() {
+		defer wg.Done()
+		io.Copy(tcpConn, tcpRemoteConn)
+		tcpConn.CloseWrite()
+	}()
+
+	wg.Wait()
+
+	logger.Infow("handleRequest", "url", req.URL.String(), "duration", time.Since(start).String())
 }
