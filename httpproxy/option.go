@@ -5,6 +5,7 @@ import "time"
 type serverOptions struct {
 	proxy          string
 	connectTimeout time.Duration
+	timeout        time.Duration
 }
 
 type ServerOption interface {
@@ -34,5 +35,11 @@ func WithProxy(addr string) ServerOption {
 func WithConnectTimeout(timeout time.Duration) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
 		o.connectTimeout = timeout
+	})
+}
+
+func WithTimeout(timeout time.Duration) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		o.timeout = timeout
 	})
 }

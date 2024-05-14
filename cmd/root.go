@@ -14,11 +14,13 @@ import (
 
 var showVersion bool
 var logFormat string
+var logLevel string
 var listenPort uint16
 var certFile string
 var keyFile string
 var proxyAddress string
 var connectTimeout time.Duration
+var timeout time.Duration
 
 func aliasNormalizeFunc(f *pflag.FlagSet, name string) pflag.NormalizedName {
 	name = strcase.ToKebab(name)
@@ -28,11 +30,13 @@ func aliasNormalizeFunc(f *pflag.FlagSet, name string) pflag.NormalizedName {
 func init() {
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show version")
 	rootCmd.Flags().StringVarP(&logFormat, "log-format", "", "console", "log format")
+	rootCmd.Flags().StringVarP(&logLevel, "log-level", "", "info", "log level")
 	rootCmd.Flags().Uint16VarP(&listenPort, "port", "p", 1087, "listen port")
 	rootCmd.Flags().StringVarP(&certFile, "cert-file", "", "", "cert file")
 	rootCmd.Flags().StringVarP(&keyFile, "key-file", "", "", "key file")
 	rootCmd.Flags().StringVar(&proxyAddress, "proxy", "", "use proxy, format: 'socks5://host:port' or 'http://host:port' or 'https://host:port'")
-	rootCmd.Flags().DurationVar(&connectTimeout, "connect-timeout", time.Duration(0), "timeout of dial proxy or remote")
+	rootCmd.Flags().DurationVar(&connectTimeout, "connect-timeout", time.Second*5, "timeout of dial proxy or remote")
+	rootCmd.Flags().DurationVar(&timeout, "timeout", time.Second*30, "timeout of read/write")
 
 	rootCmd.Flags().SetNormalizeFunc(aliasNormalizeFunc)
 }
@@ -45,18 +49,26 @@ var rootCmd = &cobra.Command{
 			os.Exit(0)
 		}
 
-		if logFormat != "" {
-			logger.SetFormat(logFormat)
-		}
+		logger.SetLevel(logLevel)
+		logger.SetFormat(logFormat)
+		logger.Debugf("set log level: %s", logLevel)
+		logger.Debugf("set log format: %s", logFormat)
 
 		address := fmt.Sprintf(":%d", listenPort)
-		
+
 		options := []httpproxy.ServerOption{}
 		if proxyAddress != "" {
 			options = append(options, httpproxy.WithProxy(proxyAddress))
+			logger.Debugw("option", "proxy", proxyAddress)
 		}
 		if connectTimeout > 0 {
 			options = append(options, httpproxy.WithConnectTimeout(connectTimeout))
+			logger.Debugw("option", "connect-timeout", connectTimeout.String())
+
+		}
+		if timeout > 0 {
+			options = append(options, httpproxy.WithTimeout(timeout))
+			logger.Debugw("option", "timeout", timeout.String())
 		}
 
 		server, err := httpproxy.NewServer(address, options...)

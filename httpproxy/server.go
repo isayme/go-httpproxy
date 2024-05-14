@@ -114,8 +114,9 @@ func (s *Server) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	tcpConn, _ := conn.(*net.TCPConn)
+	conn = NewTimeoutConn(conn, s.options.timeout)
 
-	req, err := http.ReadRequest(bufio.NewReader(tcpConn))
+	req, err := http.ReadRequest(bufio.NewReader(conn))
 	if err != nil {
 		logger.Warnw("http.ReadRequest fail", "err", err)
 		return
@@ -133,37 +134,46 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 	// not proxy request, response version
 	if req.URL.Hostname() == "" {
-		tcpConn.Write(responseOk)
-		tcpConn.Write([]byte("Content-Type: text/plain\r\n"))
-		tcpConn.Write([]byte(fmt.Sprintf("Server: %s\r\n\r\n", Name)))
-		tcpConn.Write([]byte(fmt.Sprintf("%s %s\r\n\r\n", Name, Version)))
+		conn.Write(responseOk)
+		conn.Write([]byte("Content-Type: text/plain\r\n"))
+		conn.Write([]byte(fmt.Sprintf("Server: %s\r\n\r\n", Name)))
+		conn.Write([]byte(fmt.Sprintf("%s %s\r\n\r\n", Name, Version)))
 		return
 	}
 
 	logger.Infow("newRequest", "url", req.URL.String())
 	start := time.Now()
+	defer func() {
+		logger.Infow("handleRequest", "url", req.URL.String(), "duration", time.Since(start).String())
+	}()
+
 	remoteConn, err := s.dial("tcp", req.URL.Host)
 	if err != nil {
 		logger.Warnw("dial remote fail", "err", err, "addr", req.URL.Host)
 		return
 	}
+	logger.Debugw("dial remote ok", "addr", req.URL.Host)
+
 	defer remoteConn.Close()
 	tcpRemoteConn, _ := remoteConn.(*net.TCPConn)
+	remoteConn = NewTimeoutConn(remoteConn, s.options.timeout)
 
 	if req.Method == http.MethodConnect {
 		// response ok
-		_, err := tcpConn.Write(responseConnectionEstablished)
+		_, err := remoteConn.Write(responseConnectionEstablished)
 		if err != nil {
 			logger.Warnw("https resopnse 200 fail", "err", err)
 			return
 		}
+		logger.Debugw("write connection established ok", "addr", req.URL.Host)
 	} else {
 		// write request data to remote
-		err = req.Write(tcpRemoteConn)
+		err = req.Write(remoteConn)
 		if err != nil {
 			logger.Warnw("remote write line fail", "err", err)
 			return
 		}
+		logger.Debugw("write remote ok", "addr", req.URL.Host)
 	}
 
 	// see https://stackoverflow.com/a/75418345/1918831
@@ -172,17 +182,23 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 	go func() {
 		defer wg.Done()
-		io.Copy(tcpRemoteConn, tcpConn)
+
+		var err error
+		var n int64
+		n, err = io.Copy(remoteConn, conn)
+		logger.Debugw("copy from client end", "addr", req.URL.Host, "n", n, "err", err)
 		tcpRemoteConn.CloseWrite()
 	}()
 
 	go func() {
 		defer wg.Done()
-		io.Copy(tcpConn, tcpRemoteConn)
+
+		var err error
+		var n int64
+		n, err = io.Copy(conn, remoteConn)
+		logger.Debugw("copy from remote end", "addr", req.URL.Host, "n", n, "err", err)
 		tcpConn.CloseWrite()
 	}()
 
 	wg.Wait()
-
-	logger.Infow("handleRequest", "url", req.URL.String(), "duration", time.Since(start).String())
 }
