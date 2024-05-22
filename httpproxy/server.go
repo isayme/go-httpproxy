@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -141,6 +143,19 @@ func (s *Server) handleConnection(conn net.Conn) {
 		return
 	}
 
+	// auth
+	if s.options.username != "" && s.options.password != "" {
+		authorization := req.Header.Get("Proxy-Authorization")
+		username, password, ok := parseBasicAuth(authorization)
+		if !ok || username != s.options.username || password != s.options.password {
+			conn.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\n"))
+			conn.Write([]byte("Content-Type: text/plain\r\n"))
+			conn.Write([]byte(fmt.Sprintf("Server: %s\r\n\r\n", Name)))
+			conn.Write([]byte(fmt.Sprintf("%s %s\r\n\r\n", Name, Version)))
+			return
+		}
+	}
+
 	logger.Infow("newRequest", "url", req.URL.String())
 	start := time.Now()
 	defer func() {
@@ -201,4 +216,23 @@ func (s *Server) handleConnection(conn net.Conn) {
 	}()
 
 	wg.Wait()
+}
+
+// from package http
+func parseBasicAuth(auth string) (username, password string, ok bool) {
+	const prefix = "Basic "
+	// Case insensitive prefix match. See Issue 22736.
+	if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
+		return "", "", false
+	}
+	c, err := base64.StdEncoding.DecodeString(auth[len(prefix):])
+	if err != nil {
+		return "", "", false
+	}
+	cs := string(c)
+	username, password, ok = strings.Cut(cs, ":")
+	if !ok {
+		return "", "", false
+	}
+	return username, password, true
 }

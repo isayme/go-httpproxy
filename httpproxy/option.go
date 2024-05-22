@@ -3,6 +3,9 @@ package httpproxy
 import "time"
 
 type serverOptions struct {
+	username string
+	password string
+
 	proxy          string
 	connectTimeout time.Duration
 	timeout        time.Duration
@@ -24,6 +27,18 @@ func newFuncServerOption(f func(*serverOptions)) *funcServerOption {
 	return &funcServerOption{
 		f: f,
 	}
+}
+
+func WithUsername(username string) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		o.username = username
+	})
+}
+
+func WithPassword(password string) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		o.password = password
+	})
 }
 
 func WithProxy(addr string) ServerOption {

@@ -16,6 +16,8 @@ var showVersion bool
 var logFormat string
 var logLevel string
 var listenPort uint16
+var username string
+var password string
 var certFile string
 var keyFile string
 var proxyAddress string
@@ -32,6 +34,8 @@ func init() {
 	rootCmd.Flags().StringVarP(&logFormat, "log-format", "", "console", "log format")
 	rootCmd.Flags().StringVarP(&logLevel, "log-level", "", "info", "log level")
 	rootCmd.Flags().Uint16VarP(&listenPort, "port", "p", 1087, "listen port")
+	rootCmd.Flags().StringVarP(&username, "username", "", "", "proxy server auth username")
+	rootCmd.Flags().StringVarP(&password, "password", "", "", "proxy server auth password")
 	rootCmd.Flags().StringVarP(&certFile, "cert-file", "", "", "cert file")
 	rootCmd.Flags().StringVarP(&keyFile, "key-file", "", "", "key file")
 	rootCmd.Flags().StringVar(&proxyAddress, "proxy", "", "use proxy, format: 'socks5://host:port' or 'http://host:port' or 'https://host:port'")
@@ -57,18 +61,27 @@ var rootCmd = &cobra.Command{
 		address := fmt.Sprintf(":%d", listenPort)
 
 		options := []httpproxy.ServerOption{}
-		if proxyAddress != "" {
-			options = append(options, httpproxy.WithProxy(proxyAddress))
-			logger.Debugw("option", "proxy", proxyAddress)
+
+		if username != "" && password != "" {
+			maskPassword := password
+			if len(maskPassword) > 1 {
+				maskPassword = password[:1] + "***" + password[len(password)-1:]
+			}
+			logger.Debugw("option", "username", username, "password", maskPassword)
+			options = append(options, httpproxy.WithUsername(username))
+			options = append(options, httpproxy.WithPassword(password))
 		}
 		if connectTimeout > 0 {
-			options = append(options, httpproxy.WithConnectTimeout(connectTimeout))
 			logger.Debugw("option", "connect-timeout", connectTimeout.String())
-
+			options = append(options, httpproxy.WithConnectTimeout(connectTimeout))
 		}
 		if timeout > 0 {
-			options = append(options, httpproxy.WithTimeout(timeout))
 			logger.Debugw("option", "timeout", timeout.String())
+			options = append(options, httpproxy.WithTimeout(timeout))
+		}
+		if proxyAddress != "" {
+			logger.Debugw("option", "proxy", proxyAddress)
+			options = append(options, httpproxy.WithProxy(proxyAddress))
 		}
 
 		server, err := httpproxy.NewServer(address, options...)
