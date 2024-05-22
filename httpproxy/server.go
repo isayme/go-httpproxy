@@ -113,7 +113,7 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 func (s *Server) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
-	tcpConn, _ := conn.(*net.TCPConn)
+	closeWriter := mustGetWriteCloser(conn)
 	conn = NewTimeoutConn(conn, s.options.timeout)
 
 	req, err := http.ReadRequest(bufio.NewReader(conn))
@@ -197,7 +197,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		var n int64
 		n, err = io.Copy(conn, remoteConn)
 		logger.Debugw("copy from remote end", "addr", req.URL.Host, "n", n, "err", err)
-		tcpConn.CloseWrite()
+		closeWriter.CloseWrite()
 	}()
 
 	wg.Wait()
