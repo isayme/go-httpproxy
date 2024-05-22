@@ -152,7 +152,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		logger.Warnw("dial remote fail", "err", err, "addr", req.URL.Host)
 		return
 	}
-	logger.Debugw("dial remote ok", "addr", req.URL.Host)
+	logger.Debugw("dial remote ok", "addr", req.URL.Host, "remote", remoteConn.RemoteAddr().String())
 
 	defer remoteConn.Close()
 	tcpRemoteConn, _ := remoteConn.(*net.TCPConn)
@@ -160,7 +160,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 	if req.Method == http.MethodConnect {
 		// response ok
-		_, err := remoteConn.Write(responseConnectionEstablished)
+		_, err := conn.Write(responseConnectionEstablished)
 		if err != nil {
 			logger.Warnw("https resopnse 200 fail", "err", err)
 			return
