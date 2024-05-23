@@ -117,6 +117,8 @@ func (s *Server) ListenAndServe() error {
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
+	seqId := randSeqId()
+
 	defer conn.Close()
 
 	closeWriter := mustGetWriteCloser(conn)
@@ -124,7 +126,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 	req, err := http.ReadRequest(bufio.NewReader(conn))
 	if err != nil {
-		logger.Warnw("http.ReadRequest fail", "err", err)
+		logger.Warnw("http.ReadRequest fail", "err", err, "seqId", seqId)
 		return
 	}
 
@@ -160,18 +162,18 @@ func (s *Server) handleConnection(conn net.Conn) {
 		}
 	}
 
-	logger.Infow("newRequest", "url", req.URL.String())
+	logger.Infow("newRequest", "url", req.URL.String(), "client", conn.RemoteAddr().String(), "seqId", seqId)
 	start := time.Now()
 	defer func() {
-		logger.Infow("handleRequest", "url", req.URL.String(), "duration", time.Since(start).String())
+		logger.Infow("handleRequest", "url", req.URL.String(), "duration", time.Since(start).String(), "seqId", seqId)
 	}()
 
 	remoteConn, err := s.dial("tcp", req.URL.Host)
 	if err != nil {
-		logger.Warnw("dial remote fail", "err", err, "addr", req.URL.Host)
+		logger.Warnw("dial remote fail", "err", err, "addr", req.URL.Host, "seqId", seqId)
 		return
 	}
-	logger.Debugw("dial remote ok", "addr", req.URL.Host, "remote", remoteConn.RemoteAddr().String())
+	logger.Debugw("dial remote ok", "addr", req.URL.Host, "remote", remoteConn.RemoteAddr().String(), "seqId", seqId)
 
 	defer remoteConn.Close()
 	tcpRemoteConn, _ := remoteConn.(*net.TCPConn)
@@ -181,18 +183,18 @@ func (s *Server) handleConnection(conn net.Conn) {
 		// response ok
 		_, err := conn.Write(responseConnectionEstablished)
 		if err != nil {
-			logger.Warnw("https resopnse 200 fail", "err", err)
+			logger.Warnw("https resopnse 200 fail", "err", err, "seqId", seqId)
 			return
 		}
-		logger.Debugw("write connection established ok", "addr", req.URL.Host)
+		logger.Debugw("write to client connection established ok", "addr", req.URL.Host, "seqId", seqId)
 	} else {
 		// write request data to remote
 		err = req.Write(remoteConn)
 		if err != nil {
-			logger.Warnw("remote write line fail", "err", err)
+			logger.Warnw("remote write line fail", "err", err, "seqId", seqId)
 			return
 		}
-		logger.Debugw("write remote ok", "addr", req.URL.Host)
+		logger.Debugw("write req to remote ok", "addr", req.URL.Host, "seqId", seqId)
 	}
 
 	// see https://stackoverflow.com/a/75418345/1918831
@@ -205,7 +207,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		var err error
 		var n int64
 		n, err = io.Copy(remoteConn, conn)
-		logger.Debugw("copy from client end", "addr", req.URL.Host, "n", n, "err", err)
+		logger.Debugw("copy from client end", "addr", req.URL.Host, "n", n, "err", err, "seqId", seqId)
 		tcpRemoteConn.CloseWrite()
 	}()
 
@@ -215,7 +217,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		var err error
 		var n int64
 		n, err = io.Copy(conn, remoteConn)
-		logger.Debugw("copy from remote end", "addr", req.URL.Host, "n", n, "err", err)
+		logger.Debugw("copy from remote end", "addr", req.URL.Host, "n", n, "err", err, "seqId", seqId)
 		closeWriter.CloseWrite()
 	}()
 
