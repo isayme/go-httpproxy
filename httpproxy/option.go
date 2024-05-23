@@ -3,12 +3,18 @@ package httpproxy
 import "time"
 
 type serverOptions struct {
+	listenPort    uint16
+	listenAddress string
+
 	username string
 	password string
 
 	proxy          string
 	connectTimeout time.Duration
 	timeout        time.Duration
+
+	certFile string
+	keyFile  string
 }
 
 type ServerOption interface {
@@ -27,6 +33,18 @@ func newFuncServerOption(f func(*serverOptions)) *funcServerOption {
 	return &funcServerOption{
 		f: f,
 	}
+}
+
+func WithListenPort(listenPort uint16) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		o.listenPort = listenPort
+	})
+}
+
+func WithListenAddress(listenAddress string) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		o.listenAddress = listenAddress
+	})
 }
 
 func WithUsername(username string) ServerOption {
@@ -56,5 +74,17 @@ func WithConnectTimeout(timeout time.Duration) ServerOption {
 func WithTimeout(timeout time.Duration) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
 		o.timeout = timeout
+	})
+}
+
+func WithCertFile(certFile string) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		o.certFile = certFile
+	})
+}
+
+func WithKeyFile(keyFile string) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		o.keyFile = keyFile
 	})
 }

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 var showVersion bool
 var logFormat string
 var logLevel string
+var listenAddress string
 var listenPort uint16
 var username string
 var password string
@@ -33,7 +33,8 @@ func init() {
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show version")
 	rootCmd.Flags().StringVarP(&logFormat, "log-format", "", "console", "log format")
 	rootCmd.Flags().StringVarP(&logLevel, "log-level", "", "info", "log level")
-	rootCmd.Flags().Uint16VarP(&listenPort, "port", "p", 1087, "listen port")
+	rootCmd.Flags().Uint16VarP(&listenPort, "port", "p", 1087, "listen port, omit if --listen-address used")
+	rootCmd.Flags().StringVarP(&listenAddress, "listen-address", "", "0.0.0.0:1087", "listen address")
 	rootCmd.Flags().StringVarP(&username, "username", "", "", "proxy server auth username")
 	rootCmd.Flags().StringVarP(&password, "password", "", "", "proxy server auth password")
 	rootCmd.Flags().StringVarP(&certFile, "cert-file", "", "", "cert file")
@@ -58,45 +59,40 @@ var rootCmd = &cobra.Command{
 		logger.Debugf("set log level: %s", logLevel)
 		logger.Debugf("set log format: %s", logFormat)
 
-		address := fmt.Sprintf(":%d", listenPort)
-
-		options := []httpproxy.ServerOption{}
-
-		if username != "" && password != "" {
-			maskPassword := password
-			if len(maskPassword) > 1 {
-				maskPassword = password[:1] + "***" + password[len(password)-1:]
-			}
-			logger.Debugw("option", "username", username, "password", maskPassword)
-			options = append(options, httpproxy.WithUsername(username))
-			options = append(options, httpproxy.WithPassword(password))
-		}
-		if connectTimeout > 0 {
-			logger.Debugw("option", "connect-timeout", connectTimeout.String())
-			options = append(options, httpproxy.WithConnectTimeout(connectTimeout))
-		}
-		if timeout > 0 {
-			logger.Debugw("option", "timeout", timeout.String())
-			options = append(options, httpproxy.WithTimeout(timeout))
-		}
-		if proxyAddress != "" {
-			logger.Debugw("option", "proxy", proxyAddress)
-			options = append(options, httpproxy.WithProxy(proxyAddress))
+		options := []httpproxy.ServerOption{
+			httpproxy.WithListenPort(listenPort),
+			httpproxy.WithListenAddress(listenAddress),
+			httpproxy.WithUsername(username),
+			httpproxy.WithPassword(password),
+			httpproxy.WithConnectTimeout(connectTimeout),
+			httpproxy.WithTimeout(timeout),
+			httpproxy.WithProxy(proxyAddress),
+			httpproxy.WithCertFile(certFile),
+			httpproxy.WithKeyFile(keyFile),
 		}
 
-		server, err := httpproxy.NewServer(address, options...)
+		logger.Debugw("option", "listen-port", listenPort)
+		logger.Debugw("option", "listen-address", listenAddress)
+
+		maskPassword := password
+		if len(maskPassword) > 1 {
+			maskPassword = password[:1] + "***" + password[len(password)-1:]
+		}
+		logger.Debugw("option", "username", username, "password", maskPassword)
+
+		logger.Debugw("option", "connect-timeout", connectTimeout.String())
+		logger.Debugw("option", "timeout", timeout.String())
+
+		logger.Debugw("option", "proxy", proxyAddress)
+		logger.Debugw("option", "certFile", certFile, "keyFile", keyFile)
+
+		server, err := httpproxy.NewServer(options...)
 		if err != nil {
 			logger.Error(err)
 			os.Exit(1)
 		}
 
-		if certFile != "" && keyFile != "" {
-			logger.Infow("start listen with tls ...", "addr", address)
-			logger.Error(server.ListenAndServeTLS(certFile, keyFile))
-		} else {
-			logger.Infow("start listen ...", "addr", address)
-			logger.Error(server.ListenAndServe())
-		}
+		logger.Error(server.ListenAndServe())
 	},
 }
 

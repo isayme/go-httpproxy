@@ -22,16 +22,14 @@ var responseOk = []byte("HTTP/1.1 200 OK\r\n")
 var responseConnectionEstablished = []byte("HTTP/1.1 200 Connection established\r\n\r\n")
 
 type Server struct {
-	address string
-	dialer  proxy.ContextDialer
+	dialer proxy.ContextDialer
 
 	options serverOptions
 }
 
-func NewServer(address string, opts ...ServerOption) (*Server, error) {
+func NewServer(opts ...ServerOption) (*Server, error) {
 	s := &Server{
-		address: address,
-		dialer:  proxy.Direct,
+		dialer: proxy.Direct,
 	}
 
 	if len(opts) > 0 {
@@ -81,28 +79,34 @@ func (s *Server) Serve(l net.Listener) {
 	}
 }
 
-func (s *Server) ListenAndServe() error {
-	l, err := net.Listen("tcp", s.address)
-	if err != nil {
-		logger.Errorf("net.Listen fail: %v", err)
-		return err
+func (s *Server) Listen() (net.Listener, error) {
+	address := s.options.listenAddress
+	if address == "" {
+		address = fmt.Sprintf(":%d", s.options.listenPort)
 	}
 
-	s.Serve(l)
-	return nil
+	certFile := s.options.certFile
+	keyFile := s.options.keyFile
+	if certFile != "" && keyFile != "" {
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return nil, err
+		}
+
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+		}
+
+		logger.Infow("start listen with tls ...", "addr", address)
+		return tls.Listen("tcp", address, tlsConfig)
+	} else {
+		logger.Infow("start listen ...", "addr", address)
+		return net.Listen("tcp", address)
+	}
 }
 
-func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return err
-	}
-
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-	}
-
-	l, err := tls.Listen("tcp", s.address, tlsConfig)
+func (s *Server) ListenAndServe() error {
+	l, err := s.Listen()
 	if err != nil {
 		logger.Errorf("net.Listen fail: %v", err)
 		return err
