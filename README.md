@@ -1,12 +1,14 @@
-# go-httpproxy
+# httpproxy
 
 [![Docker Image Version (latest semver)](https://img.shields.io/docker/v/isayme/httpproxy?sort=semver&style=flat-square)](https://hub.docker.com/r/isayme/httpproxy)
 ![Docker Image Size (latest semver)](https://img.shields.io/docker/image-size/isayme/httpproxy?sort=semver&style=flat-square)
 ![Docker Pulls](https://img.shields.io/docker/pulls/isayme/httpproxy?style=flat-square)
 
-A simple http proxy, support HTTP/HTTPS/HTTP2/Websocket.
+A simple http & https proxy server.
 
-# Docker Compose
+# Useage
+
+## Server: Docker Compose
 
 ```
 version: "3"
@@ -23,15 +25,9 @@ services:
     # command: httpproxy --proxy https://your-host:your-port -p 1087
 ```
 
-# Proxy Protocol Screenshoot
+## Client
 
-## for HTTP
-
-![HTTP Protocol](./doc/http.png)
-
-## for HTTPS
-
-![HTTPS Protocol](./doc/https.png)
+> curl -x http://127.0.0.1:1087 http://baidu.com
 
 # Refers
 
