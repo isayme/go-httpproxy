@@ -19,6 +19,7 @@ import (
 )
 
 var responseOk = []byte("HTTP/1.1 200 OK\r\n")
+var responseNotFound = []byte("HTTP/1.1 404 Not Found\r\n")
 var responseConnectionEstablished = []byte("HTTP/1.1 200 Connection established\r\n\r\n")
 
 type Server struct {
@@ -142,6 +143,10 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 	// not proxy request, response version
 	if req.URL.Hostname() == "" {
+		if s.options.pretendAsWeb {
+			s.pretendAsWeb(conn)
+			return
+		}
 		conn.Write(responseOk)
 		conn.Write([]byte("Content-Type: text/plain\r\n"))
 		conn.Write([]byte(fmt.Sprintf("Server: %s\r\n\r\n", Name)))
@@ -154,6 +159,11 @@ func (s *Server) handleConnection(conn net.Conn) {
 		authorization := req.Header.Get("Proxy-Authorization")
 		username, password, ok := parseBasicAuth(authorization)
 		if !ok || username != s.options.username || password != s.options.password {
+			if s.options.pretendAsWeb {
+				s.pretendAsWeb(conn)
+				return
+			}
+
 			conn.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\n"))
 			conn.Write([]byte("Content-Type: text/plain\r\n"))
 			conn.Write([]byte(fmt.Sprintf("Server: %s\r\n\r\n", Name)))
@@ -222,6 +232,13 @@ func (s *Server) handleConnection(conn net.Conn) {
 	}()
 
 	wg.Wait()
+}
+
+func (s *Server) pretendAsWeb(conn net.Conn) {
+	conn.Write(responseNotFound)
+	conn.Write([]byte("Content-Type: text/plain\r\n"))
+	conn.Write([]byte("Content-Length: 19\r\n\r\n"))
+	conn.Write([]byte("404 page not found\n"))
 }
 
 // from package http

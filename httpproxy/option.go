@@ -15,6 +15,8 @@ type serverOptions struct {
 
 	certFile string
 	keyFile  string
+
+	pretendAsWeb bool
 }
 
 type ServerOption interface {
@@ -86,5 +88,11 @@ func WithCertFile(certFile string) ServerOption {
 func WithKeyFile(keyFile string) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
 		o.keyFile = keyFile
+	})
+}
+
+func WithPretendAsWeb(pretendAsWeb bool) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		o.pretendAsWeb = pretendAsWeb
 	})
 }

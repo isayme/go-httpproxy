@@ -23,6 +23,7 @@ var keyFile string
 var proxyAddress string
 var connectTimeout time.Duration
 var timeout time.Duration
+var pretendAsWeb bool
 
 func aliasNormalizeFunc(f *pflag.FlagSet, name string) pflag.NormalizedName {
 	name = strcase.ToKebab(name)
@@ -42,6 +43,7 @@ func init() {
 	rootCmd.Flags().StringVar(&proxyAddress, "proxy", "", "use proxy, format: 'socks5://host:port' or 'http://host:port' or 'https://host:port'")
 	rootCmd.Flags().DurationVar(&connectTimeout, "connect-timeout", time.Second*5, "timeout of dial proxy or remote")
 	rootCmd.Flags().DurationVar(&timeout, "timeout", time.Second*30, "timeout of read/write")
+	rootCmd.Flags().BoolVarP(&pretendAsWeb, "pretend-as-web", "", true, "pretend as web if not proxy request")
 
 	rootCmd.Flags().SetNormalizeFunc(aliasNormalizeFunc)
 }
@@ -69,6 +71,7 @@ var rootCmd = &cobra.Command{
 			httpproxy.WithProxy(proxyAddress),
 			httpproxy.WithCertFile(certFile),
 			httpproxy.WithKeyFile(keyFile),
+			httpproxy.WithPretendAsWeb(pretendAsWeb),
 		}
 
 		logger.Debugw("option", "listen-port", listenPort)
@@ -82,6 +85,7 @@ var rootCmd = &cobra.Command{
 
 		logger.Debugw("option", "connect-timeout", connectTimeout.String())
 		logger.Debugw("option", "timeout", timeout.String())
+		logger.Debugw("option", "pretendAsWeb", pretendAsWeb)
 
 		logger.Debugw("option", "proxy", proxyAddress)
 		logger.Debugw("option", "certFile", certFile, "keyFile", keyFile)
