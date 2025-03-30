@@ -8,7 +8,13 @@ A simple http & https proxy server.
 
 # Useage
 
-## Server: Docker Compose
+## Docker
+
+```
+docker run --rm -p 1087:1087 isayme/httpproxy
+```
+
+## Docker Compose
 
 ```
 version: "3"
@@ -19,15 +25,18 @@ services:
     image: isayme/httpproxy:latest
     ports:
       - "1087:1087"
+    # run as http proxy, port 1087
     command: /app/httpproxy -p 1087
+
+    # run as http proxy, port 1087, request remote with another socks5 proxy
     # command: httpproxy --proxy socks5://your-host:your-port -p 1087
+
+    # run as http proxy, port 1087, request remote with another http proxy
     # command: httpproxy --proxy http://your-host:your-port -p 1087
+
+    # run as http proxy, port 1087, request remote with another https proxy
     # command: httpproxy --proxy https://your-host:your-port -p 1087
 ```
-
-## Client
-
-> curl -x http://127.0.0.1:1087 http://baidu.com
 
 # Refers
 
