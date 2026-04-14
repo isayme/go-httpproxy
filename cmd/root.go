@@ -57,7 +57,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		logger.SetLevel(logLevel)
-		logger.SetFormat(logFormat)
+		logger.SetFormat(logger.LogFormat(logFormat))
 		logger.Debugf("set log level: %s", logLevel)
 		logger.Debugf("set log format: %s", logFormat)
 
