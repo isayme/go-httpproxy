@@ -1,6 +1,6 @@
 module github.com/isayme/go-httpproxy
 
-go 1.22
+go 1.25.0
 
 require (
 	github.com/iancoleman/strcase v0.2.0
@@ -8,7 +8,7 @@ require (
 	github.com/isayme/go-logger v0.3.0
 	github.com/spf13/cobra v1.1.1
 	github.com/spf13/pflag v1.0.5
-	golang.org/x/net v0.0.0-20220927171203-f486391704dc
+	golang.org/x/net v0.53.0
 )
 
 require (
