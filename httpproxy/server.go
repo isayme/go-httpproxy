@@ -259,7 +259,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		var err error
 		var n int64
 		n, err = io.Copy(remoteConn, conn)
-		logger.Infow("copy from client end", "addr", req.URL.Host, "n", n, "err", err, "seqId", seqId)
+		logger.Debugw("copy from client end", "addr", req.URL.Host, "n", n, "err", err, "seqId", seqId)
 		tcpRemoteConn.CloseWrite()
 	}()
 
@@ -269,7 +269,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		var err error
 		var n int64
 		n, err = io.Copy(conn, remoteConn)
-		logger.Infow("copy from remote end", "addr", req.URL.Host, "n", n, "err", err, "seqId", seqId)
+		logger.Debugw("copy from remote end", "addr", req.URL.Host, "n", n, "err", err, "seqId", seqId)
 		closeWriter.CloseWrite()
 	}()
 

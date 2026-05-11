@@ -169,7 +169,7 @@ func TestTCP(t *testing.T) {
 	require.Equal("hello upstream", string(buf[:n]))
 }
 
-func TestMock(t *testing.T) {
+func TestMock1(t *testing.T) {
 	require := require.New(t)
 
 	// upstream server
@@ -226,4 +226,39 @@ func TestMock(t *testing.T) {
 	n, err := conn.Read(buf)
 	require.Nil(err)
 	require.Equal("404 page not found\n", string(buf[:n]))
+}
+
+func TestMock2(t *testing.T) {
+	require := require.New(t)
+
+	proxy, err := NewServer(
+		WithListenAddress(":8080"),
+		WithPretendAsWeb(true),
+	)
+	require.Nil(err)
+	l, err := proxy.Listen()
+	require.Nil(err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	defer proxy.Shutdown(ctx)
+
+	go func() {
+		proxy.Serve(l)
+	}()
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
+	}
+
+	resp, err := client.Get("http://127.0.0.1:8080")
+	require.Nil(err)
+
+	body, _ := io.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	require.Equal(404, resp.StatusCode)
+	require.Equal("404 page not found\n", string(body))
 }
