@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"context"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/iancoleman/strcase"
@@ -96,7 +99,24 @@ var rootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		logger.Error(server.ListenAndServe())
+		// receive signal
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+
+		go func() {
+			err := server.ListenAndServe()
+			if err != nil {
+				logger.Error(err)
+			}
+		}()
+
+		<-ctx.Done()
+
+		logger.Info("shutting down start")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		server.Shutdown(ctx)
+		logger.Info("shutting down end")
 	},
 }
 

@@ -26,11 +26,17 @@ type Server struct {
 	dialer proxy.ContextDialer
 
 	options serverOptions
+
+	wg       sync.WaitGroup
+	listener net.Listener
+	quit     chan struct{}
 }
 
 func NewServer(opts ...ServerOption) (*Server, error) {
 	s := &Server{
 		dialer: proxy.Direct,
+		quit:   make(chan struct{}),
+		wg:     sync.WaitGroup{},
 	}
 
 	if len(opts) > 0 {
@@ -69,7 +75,17 @@ func (s *Server) dial(network, addr string) (c net.Conn, err error) {
 }
 
 func (s *Server) Serve(l net.Listener) {
+	s.wg.Add(1)
+	defer s.wg.Done()
+
 	for {
+		select {
+		case <-s.quit:
+			logger.Info("quit serve")
+			return
+		default:
+		}
+
 		conn, err := l.Accept()
 		if err != nil {
 			logger.Warnf("l.Accept fail: %v", err)
@@ -99,10 +115,14 @@ func (s *Server) Listen() (net.Listener, error) {
 		}
 
 		logger.Infow("start listen with tls ...", "addr", address)
-		return tls.Listen("tcp", address, tlsConfig)
+		l, err := tls.Listen("tcp", address, tlsConfig)
+		s.listener = l
+		return l, err
 	} else {
 		logger.Infow("start listen ...", "addr", address)
-		return net.Listen("tcp", address)
+		l, err := net.Listen("tcp", address)
+		s.listener = l
+		return l, err
 	}
 }
 
@@ -117,7 +137,29 @@ func (s *Server) ListenAndServe() error {
 	return nil
 }
 
+func (s *Server) Shutdown(ctx context.Context) {
+	close(s.quit)
+	s.listener.Close()
+
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		logger.Warnw("ctx done", "err", ctx.Err())
+		return
+	case <-done:
+		return
+	}
+}
+
 func (s *Server) handleConnection(conn net.Conn) {
+	s.wg.Add(1)
+	defer s.wg.Done()
+
 	seqId := randSeqId()
 
 	defer conn.Close()
@@ -217,7 +259,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		var err error
 		var n int64
 		n, err = io.Copy(remoteConn, conn)
-		logger.Debugw("copy from client end", "addr", req.URL.Host, "n", n, "err", err, "seqId", seqId)
+		logger.Infow("copy from client end", "addr", req.URL.Host, "n", n, "err", err, "seqId", seqId)
 		tcpRemoteConn.CloseWrite()
 	}()
 
@@ -227,7 +269,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		var err error
 		var n int64
 		n, err = io.Copy(conn, remoteConn)
-		logger.Debugw("copy from remote end", "addr", req.URL.Host, "n", n, "err", err, "seqId", seqId)
+		logger.Infow("copy from remote end", "addr", req.URL.Host, "n", n, "err", err, "seqId", seqId)
 		closeWriter.CloseWrite()
 	}()
 
