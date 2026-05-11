@@ -173,7 +173,7 @@ func TestTCP(t *testing.T) {
 	require.Nil(err)
 
 	// read data
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond)
 	buf := make([]byte, 1024)
 	n, err := conn.Read(buf)
 	require.Nil(err)
