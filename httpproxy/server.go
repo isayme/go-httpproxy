@@ -1,9 +1,7 @@
 package httpproxy
 
 import (
-	"bufio"
 	"context"
-	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -18,8 +16,6 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-var responseOk = []byte("HTTP/1.1 200 OK\r\n")
-var responseNotFound = []byte("HTTP/1.1 404 Not Found\r\n")
 var responseConnectionEstablished = []byte("HTTP/1.1 200 Connection established\r\n\r\n")
 
 type Server struct {
@@ -27,16 +23,12 @@ type Server struct {
 
 	options serverOptions
 
-	wg       sync.WaitGroup
-	listener net.Listener
-	quit     chan struct{}
+	httpServer *http.Server
 }
 
 func NewServer(opts ...ServerOption) (*Server, error) {
 	s := &Server{
 		dialer: proxy.Direct,
-		quit:   make(chan struct{}),
-		wg:     sync.WaitGroup{},
 	}
 
 	if len(opts) > 0 {
@@ -74,180 +66,126 @@ func (s *Server) dial(network, addr string) (c net.Conn, err error) {
 	return s.dialer.DialContext(ctx, network, addr)
 }
 
-func (s *Server) Serve(l net.Listener) {
-	s.wg.Add(1)
-	defer s.wg.Done()
-
-	for {
-		select {
-		case <-s.quit:
-			logger.Info("quit serve")
-			return
-		default:
-		}
-
-		conn, err := l.Accept()
-		if err != nil {
-			logger.Warnf("l.Accept fail: %v", err)
-			continue
-		}
-
-		go s.handleConnection(conn)
-	}
-}
-
-func (s *Server) Listen() (net.Listener, error) {
+func (s *Server) ListenAndServe() error {
 	address := s.options.listenAddress
 	if address == "" {
 		address = fmt.Sprintf(":%d", s.options.listenPort)
 	}
 
+	s.httpServer = &http.Server{
+		Addr:    address,
+		Handler: s,
+	}
+
 	certFile := s.options.certFile
 	keyFile := s.options.keyFile
 	if certFile != "" && keyFile != "" {
-		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-		if err != nil {
-			return nil, err
-		}
-
-		tlsConfig := &tls.Config{
-			Certificates: []tls.Certificate{cert},
-		}
-
 		logger.Infow("start listen with tls ...", "addr", address)
-		l, err := tls.Listen("tcp", address, tlsConfig)
-		s.listener = l
-		return l, err
+		return s.httpServer.ListenAndServeTLS(certFile, keyFile)
 	} else {
 		logger.Infow("start listen ...", "addr", address)
-		l, err := net.Listen("tcp", address)
-		s.listener = l
-		return l, err
+		return s.httpServer.ListenAndServe()
 	}
 }
 
-func (s *Server) ListenAndServe() error {
-	l, err := s.Listen()
-	if err != nil {
-		logger.Errorf("net.Listen fail: %v", err)
-		return err
-	}
-
-	s.Serve(l)
-	return nil
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.httpServer.Shutdown(ctx)
 }
 
-func (s *Server) Shutdown(ctx context.Context) {
-	close(s.quit)
-	s.listener.Close()
-
-	done := make(chan struct{})
-	go func() {
-		s.wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		logger.Warnw("ctx done", "err", ctx.Err())
-		return
-	case <-done:
-		return
-	}
-}
-
-func (s *Server) handleConnection(conn net.Conn) {
-	s.wg.Add(1)
-	defer s.wg.Done()
-
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	seqId := randSeqId()
 
-	defer conn.Close()
-
-	closeWriter := mustGetWriteCloser(conn)
-	conn = NewTimeoutConn(conn, s.options.timeout)
-
-	req, err := http.ReadRequest(bufio.NewReader(conn))
-	if err != nil {
-		logger.Warnw("http.ReadRequest fail", "err", err, "seqId", seqId)
-		return
-	}
-
-	if req.Method == http.MethodConnect {
-		if req.URL.Port() == "" {
-			req.URL.Host = fmt.Sprintf("%s:%d", req.URL.Host, 443)
+	if r.Method == http.MethodConnect {
+		if r.URL.Port() == "" {
+			r.URL.Host = fmt.Sprintf("%s:%d", r.URL.Host, 443)
 		}
 	} else {
-		if req.URL.Port() == "" {
-			req.URL.Host = fmt.Sprintf("%s:%d", req.URL.Host, 80)
+		if r.URL.Port() == "" {
+			r.URL.Host = fmt.Sprintf("%s:%d", r.URL.Host, 80)
 		}
 	}
 
 	// not proxy request, response version
-	if req.URL.Hostname() == "" {
+	if r.URL.Hostname() == "" {
 		if s.options.pretendAsWeb {
-			s.pretendAsWeb(conn)
+			w.WriteHeader(404)
+			w.Write([]byte("404 page not found\n"))
 			return
 		}
-		conn.Write(responseOk)
-		conn.Write([]byte("Content-Type: text/plain\r\n"))
-		conn.Write([]byte(fmt.Sprintf("Server: %s\r\n\r\n", Name)))
-		conn.Write([]byte(fmt.Sprintf("%s %s\r\n\r\n", Name, Version)))
+
+		w.Write([]byte(fmt.Sprintf("Server1: %s\n", Name)))
+		w.Write([]byte(fmt.Sprintf("Server1: %s\n", r.URL.String())))
+		w.Write([]byte(fmt.Sprintf("%s %s\n", Name, Version)))
 		return
 	}
 
 	// auth
 	if s.options.username != "" && s.options.password != "" {
-		authorization := req.Header.Get("Proxy-Authorization")
+		authorization := r.Header.Get("Proxy-Authorization")
 		username, password, ok := parseBasicAuth(authorization)
 		if !ok || username != s.options.username || password != s.options.password {
 			if s.options.pretendAsWeb {
-				s.pretendAsWeb(conn)
+				w.WriteHeader(404)
+				w.Write([]byte("404 page not found\n"))
 				return
 			}
 
-			conn.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\n"))
-			conn.Write([]byte("Content-Type: text/plain\r\n"))
-			conn.Write([]byte(fmt.Sprintf("Server: %s\r\n\r\n", Name)))
-			conn.Write([]byte(fmt.Sprintf("%s %s\r\n\r\n", Name, Version)))
+			w.WriteHeader(407)
+			w.Header().Add("Content-Type", "text/plain")
+			w.Write([]byte(fmt.Sprintf("Server2: %s\n", Name)))
+			w.Write([]byte(fmt.Sprintf("%s %s\n", Name, Version)))
 			return
 		}
 	}
 
-	logger.Infow("newRequest", "url", req.URL.String(), "client", conn.RemoteAddr().String(), "seqId", seqId)
+	logger.Infow("newRequest", "url", r.URL.String(), "client", r.RemoteAddr, "seqId", seqId, "host", r.Host)
 	start := time.Now()
 	defer func() {
-		logger.Infow("handleRequest", "url", req.URL.String(), "duration", time.Since(start).String(), "seqId", seqId)
+		logger.Infow("handleRequest", "url", r.URL.String(), "duration", time.Since(start).String(), "seqId", seqId)
 	}()
 
-	remoteConn, err := s.dial("tcp", req.URL.Host)
+	remoteConn, err := s.dial("tcp", r.URL.Host)
 	if err != nil {
-		logger.Warnw("dial remote fail", "err", err, "addr", req.URL.Host, "seqId", seqId)
+		logger.Warnw("dial remote fail", "err", err, "addr", r.URL.Host, "seqId", seqId)
 		return
 	}
-	logger.Debugw("dial remote ok", "addr", req.URL.Host, "remote", remoteConn.RemoteAddr().String(), "seqId", seqId)
+	logger.Debugw("dial remote ok", "addr", r.URL.Host, "remote", remoteConn.RemoteAddr().String(), "seqId", seqId)
 
 	defer remoteConn.Close()
 	tcpRemoteConn, _ := remoteConn.(*net.TCPConn)
 	remoteConn = NewTimeoutConn(remoteConn, s.options.timeout)
 
-	if req.Method == http.MethodConnect {
+	whj, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "webserver doesn't support hijacking", http.StatusInternalServerError)
+		return
+	}
+	conn, _, err := whj.Hijack()
+	if err != nil {
+		logger.Warnw("hijack fail", "err", err, "seqId", seqId)
+		return
+	}
+
+	if r.Method == http.MethodConnect {
 		// response ok
 		_, err := conn.Write(responseConnectionEstablished)
 		if err != nil {
 			logger.Warnw("https resopnse 200 fail", "err", err, "seqId", seqId)
 			return
 		}
-		logger.Debugw("write to client connection established ok", "addr", req.URL.Host, "seqId", seqId)
+		logger.Debugw("write to client connection established ok", "addr", r.URL.Host, "seqId", seqId)
 	} else {
 		// write request data to remote
-		err = req.Write(remoteConn)
+		err = r.Write(remoteConn)
 		if err != nil {
 			logger.Warnw("remote write line fail", "err", err, "seqId", seqId)
 			return
 		}
-		logger.Debugw("write req to remote ok", "addr", req.URL.Host, "seqId", seqId)
+		logger.Debugw("write req to remote ok", "addr", r.URL.Host, "seqId", seqId)
 	}
+
+	closeWriter := mustGetWriteCloser(conn)
+	conn = NewTimeoutConn(conn, s.options.timeout)
 
 	// see https://stackoverflow.com/a/75418345/1918831
 	wg := sync.WaitGroup{}
@@ -259,7 +197,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		var err error
 		var n int64
 		n, err = io.Copy(remoteConn, conn)
-		logger.Debugw("copy from client end", "addr", req.URL.Host, "n", n, "err", err, "seqId", seqId)
+		logger.Debugw("copy from client end", "addr", r.URL.Host, "n", n, "err", err, "seqId", seqId)
 		tcpRemoteConn.CloseWrite()
 	}()
 
@@ -269,18 +207,11 @@ func (s *Server) handleConnection(conn net.Conn) {
 		var err error
 		var n int64
 		n, err = io.Copy(conn, remoteConn)
-		logger.Debugw("copy from remote end", "addr", req.URL.Host, "n", n, "err", err, "seqId", seqId)
+		logger.Debugw("copy from remote end", "addr", r.URL.Host, "n", n, "err", err, "seqId", seqId)
 		closeWriter.CloseWrite()
 	}()
 
 	wg.Wait()
-}
-
-func (s *Server) pretendAsWeb(conn net.Conn) {
-	conn.Write(responseNotFound)
-	conn.Write([]byte("Content-Type: text/plain\r\n"))
-	conn.Write([]byte("Content-Length: 19\r\n\r\n"))
-	conn.Write([]byte("404 page not found\n"))
 }
 
 // from package http

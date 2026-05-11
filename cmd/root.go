@@ -88,10 +88,10 @@ var rootCmd = &cobra.Command{
 
 		logger.Debugw("option", "connect-timeout", connectTimeout.String())
 		logger.Debugw("option", "timeout", timeout.String())
-		logger.Debugw("option", "pretendAsWeb", pretendAsWeb)
+		logger.Debugw("option", "pretend-as-web", pretendAsWeb)
 
 		logger.Debugw("option", "proxy", proxyAddress)
-		logger.Debugw("option", "certFile", certFile, "keyFile", keyFile)
+		logger.Debugw("option", "cert-file", certFile, "key-file", keyFile)
 
 		server, err := httpproxy.NewServer(options...)
 		if err != nil {

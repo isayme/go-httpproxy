@@ -17,6 +17,43 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func createProxy(require *require.Assertions, opts ...ServerOption) (chan struct{}, func()) {
+	proxy, err := NewServer(opts...)
+	require.Nil(err)
+
+	address := proxy.options.listenAddress
+	if address == "" {
+		address = fmt.Sprintf(":%d", proxy.options.listenPort)
+	}
+
+	proxy.httpServer = &http.Server{
+		Addr:    address,
+		Handler: proxy,
+	}
+
+	ch := make(chan struct{}, 1)
+	ln, err := net.Listen("tcp", address)
+	require.Nil(err)
+
+	ch <- struct{}{}
+
+	certFile := proxy.options.certFile
+	keyFile := proxy.options.keyFile
+	if certFile != "" && keyFile != "" {
+		logger.Infow("start listen with tls ...", "addr", address)
+		go proxy.httpServer.ServeTLS(ln, certFile, keyFile)
+	} else {
+		logger.Infow("start listen ...", "addr", address)
+		go proxy.httpServer.Serve(ln)
+	}
+
+	return ch, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+		proxy.Shutdown(ctx)
+	}
+}
+
 func TestHTTP(t *testing.T) {
 	require := require.New(t)
 
@@ -27,18 +64,9 @@ func TestHTTP(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	proxy, err := NewServer(WithListenAddress(":8080"))
-	require.Nil(err)
-	l, err := proxy.Listen()
-	require.Nil(err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
-	defer proxy.Shutdown(ctx)
-
-	go func() {
-		proxy.Serve(l)
-	}()
+	ch, stop := createProxy(require, WithListenAddress(":8080"), WithPretendAsWeb(true))
+	defer stop()
+	<-ch
 
 	proxyUrl, err := url.Parse("http://127.0.0.1:8080")
 	require.Nil(err)
@@ -71,18 +99,9 @@ func TestHTTPS(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	proxy, err := NewServer(WithListenAddress(":8080"))
-	require.Nil(err)
-	l, err := proxy.Listen()
-	require.Nil(err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
-	defer proxy.Shutdown(ctx)
-
-	go func() {
-		proxy.Serve(l)
-	}()
+	ch, stop := createProxy(require, WithListenAddress(":8080"), WithPretendAsWeb(true))
+	defer stop()
+	<-ch
 
 	proxyUrl, err := url.Parse("http://127.0.0.1:8080")
 	require.Nil(err)
@@ -131,17 +150,9 @@ func TestTCP(t *testing.T) {
 	}()
 
 	// proxy server
-	proxy, err := NewServer(WithListenAddress(":8080"))
-	require.Nil(err)
-	l, err := proxy.Listen()
-	require.Nil(err)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
-	defer proxy.Shutdown(ctx)
-
-	go func() {
-		proxy.Serve(l)
-	}()
+	ch, stop := createProxy(require, WithListenAddress(":8080"), WithPretendAsWeb(true))
+	defer stop()
+	<-ch
 
 	// client
 	conn, err := net.Dial("tcp", "127.0.0.1:8080")
@@ -173,20 +184,9 @@ func TestMock1(t *testing.T) {
 	require := require.New(t)
 
 	// proxy server
-	proxy, err := NewServer(
-		WithListenAddress(":8080"),
-		WithPretendAsWeb(true),
-	)
-	require.Nil(err)
-	l, err := proxy.Listen()
-	require.Nil(err)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
-	defer proxy.Shutdown(ctx)
-
-	go func() {
-		proxy.Serve(l)
-	}()
+	ch, stop := createProxy(require, WithListenAddress(":8080"), WithPretendAsWeb(true))
+	defer stop()
+	<-ch
 
 	// client
 	conn, err := net.Dial("tcp", "127.0.0.1:8080")
@@ -194,38 +194,27 @@ func TestMock1(t *testing.T) {
 	defer conn.Close()
 
 	// req := fmt.Sprintf("GET %s HTTP/1.1\r\n\r\n\r\n", echoLn.Addr().String())
-	req := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", "/", "http://baidu.com")
+	req := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", "/", "baidu.com")
 	_, err = conn.Write([]byte(req))
 	require.Nil(err)
 
 	resp, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{})
 	require.Nil(err)
 	defer resp.Body.Close()
-	require.Equal(404, resp.StatusCode)
 
 	buf := make([]byte, 1024)
 	n, _ := resp.Body.Read(buf)
 	require.Equal("404 page not found\n", string(buf[:n]))
+
+	require.Equal(404, resp.StatusCode)
 }
 
 func TestMock2(t *testing.T) {
 	require := require.New(t)
 
-	proxy, err := NewServer(
-		WithListenAddress(":8080"),
-		WithPretendAsWeb(true),
-	)
-	require.Nil(err)
-	l, err := proxy.Listen()
-	require.Nil(err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
-	defer proxy.Shutdown(ctx)
-
-	go func() {
-		proxy.Serve(l)
-	}()
+	ch, stop := createProxy(require, WithListenAddress(":8080"), WithPretendAsWeb(true))
+	defer stop()
+	<-ch
 
 	client := &http.Client{
 		Transport: &http.Transport{
