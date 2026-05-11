@@ -1,6 +1,6 @@
 .PHONY: test
 test:
-	go test ./...
+	go clean -testcache && go test ./...
 
 .PHONY: cover
 cover:

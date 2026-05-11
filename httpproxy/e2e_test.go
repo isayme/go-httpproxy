@@ -172,25 +172,6 @@ func TestTCP(t *testing.T) {
 func TestMock1(t *testing.T) {
 	require := require.New(t)
 
-	// upstream server
-	echoLn, err := net.Listen("tcp", "127.0.0.1:0")
-	require.Nil(err)
-	defer echoLn.Close()
-
-	go func() {
-		for {
-			conn, err := echoLn.Accept()
-			if err != nil {
-				return
-			}
-
-			io.Copy(conn, conn)
-			// tcpConn, _ := conn.(*net.TCPConn)
-			conn.Close()
-			logger.Info("echo handle end")
-		}
-	}()
-
 	// proxy server
 	proxy, err := NewServer(
 		WithListenAddress(":8080"),
@@ -213,7 +194,7 @@ func TestMock1(t *testing.T) {
 	defer conn.Close()
 
 	// req := fmt.Sprintf("GET %s HTTP/1.1\r\n\r\n\r\n", echoLn.Addr().String())
-	req := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", "/", "http://"+echoLn.Addr().String())
+	req := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", "/", "http://baidu.com")
 	_, err = conn.Write([]byte(req))
 	require.Nil(err)
 
@@ -223,8 +204,7 @@ func TestMock1(t *testing.T) {
 	require.Equal(404, resp.StatusCode)
 
 	buf := make([]byte, 1024)
-	n, err := conn.Read(buf)
-	require.Nil(err)
+	n, _ := resp.Body.Read(buf)
 	require.Equal("404 page not found\n", string(buf[:n]))
 }
 
